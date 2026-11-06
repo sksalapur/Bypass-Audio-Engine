@@ -7,6 +7,8 @@ import com.google.gson.annotations.SerializedName
 data class TelemetryResponse(
     @SerializedName("playback_state") val playbackState: String = "STANDBY",
     @SerializedName("active_endpoint") val activeEndpoint: String = "NONE",
+    @SerializedName("active_package") val activePackage: String? = null,
+    @SerializedName("is_video_app") val isVideoApp: Boolean = false,
     @SerializedName("is_usb_active") val isUsbActive: Boolean = false,
     @SerializedName("is_internal_active") val isInternalActive: Boolean = false,
     @SerializedName("bluetooth_suppressed") val bluetoothSuppressed: Boolean = true,

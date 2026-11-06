@@ -42,6 +42,12 @@ class MainActivity : ComponentActivity() {
         optimizeDisplayRefreshRate()
         com.music.bypass.service.BudsService.start(this)
 
+        // Request privileged routing permissions via root if not already granted
+        try {
+            val pkg = packageName
+            Runtime.getRuntime().exec(arrayOf("su", "-c", "pm grant $pkg android.permission.MODIFY_AUDIO_ROUTING 2>/dev/null; pm grant $pkg android.permission.DUMP 2>/dev/null"))
+        } catch (_: Exception) {}
+
         setContent {
             BypassTheme {
                 val coroutineScope = rememberCoroutineScope()
@@ -56,6 +62,7 @@ class MainActivity : ComponentActivity() {
                         BypassDaemonClient.getTelemetry()?.let { newTel ->
                             if (newTel != telemetry) {
                                 telemetry = newTel
+                                com.music.bypass.data.DynamicMixerManager.onTelemetryUpdated(this@MainActivity, newTel)
                                 com.music.bypass.widget.SignalChainWidgetProvider.notifyUpdate(this@MainActivity)
                             }
                         }

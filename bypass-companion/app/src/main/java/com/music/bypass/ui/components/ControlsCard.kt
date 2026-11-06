@@ -14,7 +14,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import com.music.bypass.data.ControlsConfig
+import com.music.bypass.data.DynamicMixerManager
 import com.music.bypass.ui.theme.*
 
 @Composable
@@ -27,9 +29,14 @@ fun ControlsCard(
     onRestartAudio: () -> Unit,
     isRestarting: Boolean
 ) {
+    val context = LocalContext.current
     var localVol by remember(config?.hardwareVolumeLevel) {
         mutableFloatStateOf((config?.hardwareVolumeLevel ?: 100).toFloat())
     }
+    var dynamicClockEnabled by remember { mutableStateOf(DynamicMixerManager.isDynamicClockEnabled(context)) }
+    var antiStutterEnabled by remember { mutableStateOf(DynamicMixerManager.isAntiStutterEnabled(context)) }
+    val mixerStatus by DynamicMixerManager.activeStatusText.collectAsState()
+    var manualRateSelected by remember { mutableStateOf(0) }
 
     Column(
         modifier = Modifier
@@ -58,6 +65,71 @@ fun ControlsCard(
                 desc = "Vendor direct PCM route on internal 3.5mm jack",
                 checked = config?.internalDirectOutput ?: true,
                 onCheckedChange = { onToggleControl("internal_direct_output", it) }
+            )
+        }
+
+        // Card 2: Dynamic DAC Clocking & Video Anti-Stutter (Android 14+)
+        ControlSectionBox(title = "DYNAMIC DAC CLOCKING & VIDEO ANTI-STUTTER") {
+            ToggleRow(
+                title = "Android 14+ Dynamic Clocking",
+                desc = "Synchronize hardware DAC clock on-the-fly to match song stream rate",
+                checked = dynamicClockEnabled,
+                onCheckedChange = {
+                    dynamicClockEnabled = it
+                    DynamicMixerManager.setDynamicClockEnabled(context, it)
+                }
+            )
+            DividerLine()
+            ToggleRow(
+                title = "Video Anti-Stutter Protection",
+                desc = "Locks mixer at 48 kHz on video apps (YouTube, TikTok, Netflix) to prevent frame drops",
+                checked = antiStutterEnabled,
+                onCheckedChange = {
+                    antiStutterEnabled = it
+                    DynamicMixerManager.setAntiStutterEnabled(context, it)
+                }
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(SurfaceElevated)
+                    .border(1.dp, SurfaceBorder, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = "Engine Clock Status", style = Typography.bodySmall, color = TextMuted)
+                Text(
+                    text = mixerStatus,
+                    style = Typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = GoldAccent,
+                    fontSize = 11.5.sp
+                )
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(text = "Manual Rate Re-clock Override", style = Typography.bodySmall, color = TextDim)
+            Spacer(modifier = Modifier.height(6.dp))
+            SegmentedButtons(
+                options = listOf(
+                    "0" to "Auto 1:1",
+                    "44100" to "44.1k",
+                    "48000" to "48.0k",
+                    "96000" to "96.0k",
+                    "192000" to "192k"
+                ),
+                selected = manualRateSelected.toString(),
+                onSelect = { rateStr ->
+                    val r = rateStr.toIntOrNull() ?: 0
+                    manualRateSelected = r
+                    if (r == 0) {
+                        DynamicMixerManager.clearPreferredMixerAttributes(context)
+                    } else {
+                        DynamicMixerManager.setPreferredMixerAttributes(context, r, 24)
+                    }
+                }
             )
         }
 

@@ -30,6 +30,15 @@ if echo "$MS_DUMP" | grep -qE "state=3|state=PlaybackState \{state=3"; then
     MS_PLAYING=1
 fi
 
+# Detect active package from media session stack
+PKG_DETECTED=$(echo "$MS_DUMP" | grep -B 2 -A 2 "state=PlaybackState {state=3" | grep -o 'package=[^ ]*' | head -n1 | sed 's/package=//' | tr -d '"\r\n\\ ')
+if [ -z "$PKG_DETECTED" ]; then
+    PKG_DETECTED=$(echo "$MS_DUMP" | grep -o 'package=[^ ]*' | grep -vE 'com.android.server.telecom|com.google.android.gms|system' | head -n1 | sed 's/package=//' | tr -d '"\r\n\\ ')
+fi
+if [ -n "$PKG_DETECTED" ]; then
+    MEDIA_PKG="$PKG_DETECTED"
+fi
+
 DESC_LINE=$(echo "$MS_DUMP" | grep -o 'description=[^,]*' | head -n1 | sed 's/description=//' | sed 's/^[ \t]*//;s/[ \t]*$//' | tr -d '"\r\n\\')
 if [ -n "$DESC_LINE" ] && [ "$DESC_LINE" != "null" ]; then
     MEDIA_TITLE="$DESC_LINE"
@@ -39,6 +48,57 @@ ARTIST_LINE=$(echo "$MS_DUMP" | grep -o 'description=[^,]*, *[^,]*' | head -n1 |
 if [ -n "$ARTIST_LINE" ] && [ "$ARTIST_LINE" != "$MEDIA_TITLE" ] && [ "$ARTIST_LINE" != "null" ]; then
     MEDIA_ARTIST="$ARTIST_LINE"
 fi
+
+# 1b. Fast Media Metrics Stream & Codec Resolution Inspection (< 5 ms)
+METRICS_CONTAINER="FLAC / WAV"
+METRICS_RATE=0
+METRICS_DUMP=$(dumpsys media.metrics 2>/dev/null | grep -E '(\{codec,|\{audio\.track\.|\{audio\.thread\.)' | tail -n 25)
+if [ -n "$METRICS_DUMP" ]; then
+    SR_MATCH=$(echo "$METRICS_DUMP" | grep -o 'sampleRate=[0-9]*\|sample_rate:[0-9]*' | tail -n1 | sed 's/.*[=:]//' | tr -d '\r\n ')
+    if [ -n "$SR_MATCH" ] && [ "$SR_MATCH" -gt 0 ] 2>/dev/null; then
+        METRICS_RATE="$SR_MATCH"
+    fi
+
+    if echo "$METRICS_DUMP" | grep -qi "flac"; then
+        METRICS_CONTAINER="FLAC"
+    elif echo "$METRICS_DUMP" | grep -qi "opus"; then
+        METRICS_CONTAINER="Opus"
+    elif echo "$METRICS_DUMP" | grep -qi "aac"; then
+        METRICS_CONTAINER="AAC"
+    elif echo "$METRICS_DUMP" | grep -qi "alac"; then
+        METRICS_CONTAINER="ALAC"
+    elif echo "$METRICS_DUMP" | grep -qi "mp3"; then
+        METRICS_CONTAINER="MP3"
+    fi
+fi
+
+# Friendly App Name & Video App Detection
+MEDIA_APP_NAME="Music Player"
+case "$MEDIA_PKG" in
+    *bitchord*) MEDIA_APP_NAME="BitChord" ;;
+    *apple*music*) MEDIA_APP_NAME="Apple Music" ;;
+    *tidal*) MEDIA_APP_NAME="TIDAL" ;;
+    *qobuz*) MEDIA_APP_NAME="Qobuz" ;;
+    *spotify*) MEDIA_APP_NAME="Spotify" ;;
+    *audioplayer*|*poweramp*) MEDIA_APP_NAME="Poweramp" ;;
+    *youtube.music*) MEDIA_APP_NAME="YouTube Music" ;;
+    *usbaudioplayerpro*) MEDIA_APP_NAME="UAPP" ;;
+    *hiby*) MEDIA_APP_NAME="HiBy Music" ;;
+    *fiio*) MEDIA_APP_NAME="FiiO Music" ;;
+    *deezer*) MEDIA_APP_NAME="Deezer" ;;
+    *youtube*) MEDIA_APP_NAME="YouTube" ;;
+    *tiktok*|*musically*|*trill*) MEDIA_APP_NAME="TikTok" ;;
+    *instagram*) MEDIA_APP_NAME="Instagram" ;;
+    *netflix*) MEDIA_APP_NAME="Netflix" ;;
+    *) MEDIA_APP_NAME="Audio Track" ;;
+esac
+
+IS_VIDEO_APP=false
+case "$MEDIA_PKG" in
+    *youtube*|*tiktok*|*musically*|*trill*|*instagram*|*netflix*|*facebook*)
+        IS_VIDEO_APP=true
+        ;;
+esac
 
 # 2. Inspect kernel ALSA sound cards via /proc/asound/cards
 USB_CARD_FOUND=0
@@ -363,6 +423,8 @@ cat << EOF
 {
   "playback_state": "$PLAYBACK_STATE",
   "active_endpoint": "$ACTIVE_ENDPOINT",
+  "active_package": "$MEDIA_PKG",
+  "is_video_app": $IS_VIDEO_APP,
   "is_usb_active": $([ $IS_USB_ACTIVE -eq 1 ] && echo "true" || echo "false"),
   "is_internal_active": $([ $IS_INTERNAL_ACTIVE -eq 1 ] && echo "true" || echo "false"),
   "bluetooth_suppressed": $BT_SUPPRESSED,
@@ -372,10 +434,10 @@ cat << EOF
   },
   "signal_chain": {
     "node1_source": {
-      "app": "BitChord ($MEDIA_PKG)",
+      "app": "$MEDIA_APP_NAME ($MEDIA_PKG)",
       "title": "$MEDIA_TITLE",
       "artist": "$MEDIA_ARTIST",
-      "container": "FLAC / WAV",
+      "container": "$METRICS_CONTAINER",
       "sample_rate": $SOURCE_SAMPLE_RATE,
       "bit_depth": $BIT_DEPTH,
       "channels": $HW_CHANNELS,
