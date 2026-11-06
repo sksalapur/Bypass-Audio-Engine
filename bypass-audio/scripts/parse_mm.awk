@@ -29,3 +29,4 @@ END {
     print "METRICS_RATE=" rate;
     print "METRICS_CONTAINER=\"" container "\"";
 }
+

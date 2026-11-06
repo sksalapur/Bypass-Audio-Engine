@@ -11,22 +11,23 @@ WEBROOT="$MODDIR/webroot"
 # Read the primary HTTP request line from stdin
 read -r REQUEST_LINE || exit 0
 
-# Strip \r and trailing whitespace
-REQUEST_LINE=$(echo "$REQUEST_LINE" | tr -d '\r\n')
+# Strip \r and parse method and target URI without subprocess forks
+REQUEST_LINE=$(printf "%s" "$REQUEST_LINE" | tr -d '\r\n')
 [ -z "$REQUEST_LINE" ] && exit 0
 
-# Parse method and target URI
-METHOD=$(echo "$REQUEST_LINE" | awk '{print $1}')
-FULL_URI=$(echo "$REQUEST_LINE" | awk '{print $2}')
+METHOD="${REQUEST_LINE%% *}"
+REST_URI="${REQUEST_LINE#* }"
+FULL_URI="${REST_URI% *}"
 
 # Read remaining request headers until empty line
 CONTENT_LENGTH=0
 while IFS= read -r HEADER; do
-    HEADER=$(echo "$HEADER" | tr -d '\r\n')
+    HEADER=$(printf "%s" "$HEADER" | tr -d '\r\n')
     [ -z "$HEADER" ] && break
     case "$HEADER" in
         [Cc][Oo][Nn][Tt][Ee][Nn][Tt]-[Ll][Ee][Nn][Gg][Tt][Hh]:*)
-            CONTENT_LENGTH=$(echo "$HEADER" | awk '{print $2}' | tr -d '\r\n ')
+            CONTENT_LENGTH="${HEADER#*:}"
+            CONTENT_LENGTH=$(printf "%s" "$CONTENT_LENGTH" | tr -d ' ')
             ;;
     esac
 done

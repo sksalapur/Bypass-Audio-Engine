@@ -12,6 +12,11 @@ CACHE_DIR="/data/local/tmp/bypass_telemetry"
 SCRIPTS_DIR="${0%/*}"
 [ -z "$SCRIPTS_DIR" ] || [ "$SCRIPTS_DIR" = "." ] && SCRIPTS_DIR="/data/adb/modules/bypass-audio/scripts"
 
+# Cache TTL Settings (Rate-limiting to eliminate Bluetooth stack mutex contention)
+BT_TTL=30  # 30-second TTL for dumpsys bluetooth_manager (strictly rate-limited)
+MS_TTL=3   # 3-second TTL for dumpsys media_session
+MM_TTL=3   # 3-second TTL for dumpsys media.metrics
+
 NOW=$(date +%s 2>/dev/null || echo 0)
 
 # Default values
@@ -35,12 +40,12 @@ MS_ENV="$CACHE_DIR/ms_parsed.env"
 MS_MTIME=$(stat -c %Y "$MS_ENV" 2>/dev/null || echo 0)
 MS_AGE=$((NOW - MS_MTIME))
 
-if [ "$MS_AGE" -ge 0 ] && [ "$MS_AGE" -lt 3 ] && [ -f "$MS_ENV" ]; then
+if [ "$MS_AGE" -ge 0 ] && [ "$MS_AGE" -lt "$MS_TTL" ] && [ -f "$MS_ENV" ]; then
     . "$MS_ENV"
 else
-    dumpsys media_session 2>/dev/null > "$CACHE_DIR/ms_dump.cache"
+    dumpsys media_session 2>/dev/null > "$CACHE_DIR/ms_dump.tmp" && mv -f "$CACHE_DIR/ms_dump.tmp" "$CACHE_DIR/ms_dump.cache" 2>/dev/null
     if [ -f "$SCRIPTS_DIR/parse_ms.awk" ]; then
-        awk -f "$SCRIPTS_DIR/parse_ms.awk" "$CACHE_DIR/ms_dump.cache" > "$MS_ENV" 2>/dev/null
+        awk -f "$SCRIPTS_DIR/parse_ms.awk" "$CACHE_DIR/ms_dump.cache" > "$CACHE_DIR/ms_parsed.tmp" && mv -f "$CACHE_DIR/ms_parsed.tmp" "$MS_ENV" 2>/dev/null
     else
         awk '
         BEGIN { playing=0; pkg="com.music.bitchord"; title="BitChord Track"; artist="BitChord Playback"; }
@@ -51,7 +56,7 @@ else
             match($0, /description=[^,]*, *[^,\r\n]*/); if (RSTART>0) { s=substr($0, RSTART+12, RLENGTH-12); sub(/.*, */, "", s); gsub(/^ +| +$/, "", s); gsub(/[\r\n"\\]/, "", s); if (s!="" && s!="null" && s!=title) artist=s; }
         }
         END { print "MS_PLAYING=" playing; print "MEDIA_PKG=\"" pkg "\""; print "MEDIA_TITLE=\"" title "\""; print "MEDIA_ARTIST=\"" artist "\""; }
-        ' "$CACHE_DIR/ms_dump.cache" > "$MS_ENV" 2>/dev/null
+        ' "$CACHE_DIR/ms_dump.cache" > "$CACHE_DIR/ms_parsed.tmp" && mv -f "$CACHE_DIR/ms_parsed.tmp" "$MS_ENV" 2>/dev/null
     fi
     . "$MS_ENV"
 fi
@@ -66,12 +71,12 @@ MM_ENV="$CACHE_DIR/mm_parsed.env"
 MM_MTIME=$(stat -c %Y "$MM_ENV" 2>/dev/null || echo 0)
 MM_AGE=$((NOW - MM_MTIME))
 
-if [ "$MM_AGE" -ge 0 ] && [ "$MM_AGE" -lt 3 ] && [ -f "$MM_ENV" ]; then
+if [ "$MM_AGE" -ge 0 ] && [ "$MM_AGE" -lt "$MM_TTL" ] && [ -f "$MM_ENV" ]; then
     . "$MM_ENV"
 else
-    dumpsys media.metrics 2>/dev/null | grep -E '(\{codec,|\{audio\.track\.)' | tail -n 25 > "$CACHE_DIR/mm_dump.cache"
+    dumpsys media.metrics 2>/dev/null | grep -E '(\{codec,|\{audio\.track\.)' | tail -n 25 > "$CACHE_DIR/mm_dump.tmp" && mv -f "$CACHE_DIR/mm_dump.tmp" "$CACHE_DIR/mm_dump.cache" 2>/dev/null
     if [ -f "$SCRIPTS_DIR/parse_mm.awk" ]; then
-        awk -f "$SCRIPTS_DIR/parse_mm.awk" "$CACHE_DIR/mm_dump.cache" > "$MM_ENV" 2>/dev/null
+        awk -f "$SCRIPTS_DIR/parse_mm.awk" "$CACHE_DIR/mm_dump.cache" > "$CACHE_DIR/mm_parsed.tmp" && mv -f "$CACHE_DIR/mm_parsed.tmp" "$MM_ENV" 2>/dev/null
     else
         awk '
         BEGIN { rate=0; container="FLAC / WAV"; }
@@ -83,7 +88,7 @@ else
         /[Aa][Ll][Aa][Cc]/ { container="ALAC"; }
         /[Mm][Pp]3/ { container="MP3"; }
         END { print "METRICS_RATE=" rate; print "METRICS_CONTAINER=\"" container "\""; }
-        ' "$CACHE_DIR/mm_dump.cache" > "$MM_ENV" 2>/dev/null
+        ' "$CACHE_DIR/mm_dump.cache" > "$CACHE_DIR/mm_parsed.tmp" && mv -f "$CACHE_DIR/mm_parsed.tmp" "$MM_ENV" 2>/dev/null
     fi
     . "$MM_ENV"
 fi
@@ -180,22 +185,22 @@ fi
 
 # 4. Bluetooth Stack Inspection (STRICT SKIP if USB DAC or Internal DAC is active)
 # Anti-Crackle Rule: Never call raw dumpsys bluetooth_manager on every poll!
-# Uses 15-second TTL file cache to prevent holding com.android.bluetooth A2DP locks.
+# Uses 30-second TTL file cache to prevent holding com.android.bluetooth A2DP locks.
 if [ "$USB_CARD_FOUND" -eq 0 ] && [ "$IS_INTERNAL_ACTIVE" -eq 0 ]; then
     BT_ENV="$CACHE_DIR/bt_parsed.env"
     BT_MTIME=$(stat -c %Y "$BT_ENV" 2>/dev/null || echo 0)
     BT_AGE=$((NOW - BT_MTIME))
 
-    if [ "$BT_AGE" -ge 0 ] && [ "$BT_AGE" -lt 15 ] && [ -f "$BT_ENV" ]; then
+    if [ "$BT_AGE" -ge 0 ] && [ "$BT_AGE" -lt "$BT_TTL" ] && [ -f "$BT_ENV" ]; then
         . "$BT_ENV"
     else
         PROP_CODEC=$(getprop persist.bypass.audio.bt_codec 2>/dev/null)
         PROP_BITRATE=$(getprop persist.bypass.audio.bt_bitrate 2>/dev/null)
 
-        dumpsys bluetooth_manager 2>/dev/null > "$CACHE_DIR/bt_dump.cache"
+        dumpsys bluetooth_manager 2>/dev/null > "$CACHE_DIR/bt_dump.tmp" && mv -f "$CACHE_DIR/bt_dump.tmp" "$CACHE_DIR/bt_dump.cache" 2>/dev/null
         if [ -f "$SCRIPTS_DIR/parse_bt.awk" ]; then
             awk -v prop_codec="$PROP_CODEC" -v prop_bitrate="$PROP_BITRATE" \
-                -f "$SCRIPTS_DIR/parse_bt.awk" "$CACHE_DIR/bt_dump.cache" > "$BT_ENV" 2>/dev/null
+                -f "$SCRIPTS_DIR/parse_bt.awk" "$CACHE_DIR/bt_dump.cache" > "$CACHE_DIR/bt_parsed.tmp" && mv -f "$CACHE_DIR/bt_parsed.tmp" "$BT_ENV" 2>/dev/null
         else
             awk -v prop_codec="$PROP_CODEC" -v prop_bitrate="$PROP_BITRATE" '
             BEGIN { connected=0; streaming=0; codec=(prop_codec!="")?prop_codec:"AAC"; dev="Bluetooth Headset"; rate=44100; bits=16; bitrate=(prop_bitrate!="")?prop_bitrate:"328 kbps"; }
@@ -212,7 +217,7 @@ if [ "$USB_CARD_FOUND" -eq 0 ] && [ "$IS_INTERNAL_ACTIVE" -eq 0 ]; then
                 else if (codec ~ /AAC/ && bitrate=="328 kbps") bitrate="256 kbps";
                 print "BT_CONNECTED=" connected; print "BT_STREAMING=" streaming; print "BT_CODEC=\"" codec "\""; print "BT_DEVICE=\"" dev "\""; print "BT_RATE=" rate; print "BT_BITS=" bits; print "BT_BITRATE=\"" bitrate "\"";
             }
-            ' "$CACHE_DIR/bt_dump.cache" > "$BT_ENV" 2>/dev/null
+            ' "$CACHE_DIR/bt_dump.cache" > "$CACHE_DIR/bt_parsed.tmp" && mv -f "$CACHE_DIR/bt_parsed.tmp" "$BT_ENV" 2>/dev/null
         fi
         . "$BT_ENV"
     fi
