@@ -62,7 +62,6 @@ class MainActivity : ComponentActivity() {
                         BypassDaemonClient.getTelemetry()?.let { newTel ->
                             if (newTel != telemetry) {
                                 telemetry = newTel
-                                com.music.bypass.data.DynamicMixerManager.onTelemetryUpdated(this@MainActivity, newTel)
                                 com.music.bypass.widget.SignalChainWidgetProvider.notifyUpdate(this@MainActivity)
                             }
                         }
