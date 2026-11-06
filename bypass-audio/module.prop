@@ -1,7 +1,7 @@
 id=bypass-audio
 name=Bypass Audiophile Engine
-version=v1.0.0
-versionCode=100
+version=v1.0
+versionCode=1
 author=sksalapur & Antigravity
 description=Zero-latency hardware bridge between Android audio HAL/kernel and BitChord. Bypasses 48kHz AudioFlinger resampler, unlocks direct bit-perfect USB/Direct PCM, and serves live WebUI on port 9090.
 web=true
