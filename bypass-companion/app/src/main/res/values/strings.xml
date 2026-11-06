@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">Bypass Audio</string>
+    <string name="widget_name">Signal Chain Rail</string>
+    <string name="widget_description">Live hardware audio signal chain and bit-perfect pipeline monitor</string>
+    <string name="anc_widget_name">Realme Buds ANC &amp; Battery</string>
+    <string name="anc_widget_description">Quick ANC, Transparency, Normal mode toggle and live battery status for realme Buds</string>
+    <string-array name="xposed_scope">
+        <item>com.music.bitchord</item>
+        <item>com.realme.link</item>
+    </string-array>
+</resources>
+

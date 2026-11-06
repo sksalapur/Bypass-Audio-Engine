@@ -1,0 +1,34 @@
+# ═══════════════════════════════════════════════════════════════════
+# Bypass Audiophile Engine — System Properties
+# Transparent Hardware Bridge for BitChord (com.music.bitchord)
+# ═══════════════════════════════════════════════════════════════════
+
+# [CRITICAL ANTI-CRACKLE RULE]
+# KT0210 (Moondrop Chu II DSP) uses USB Full-Speed (12 Mbps, 1ms frames).
+# vendor.audio.usb.super_hifi=1 forces a 512-frame period (5.3ms) that drops
+# isochronous packets and causes buffer crackle. Must strictly stay 0!
+vendor.audio.usb.super_hifi=0
+
+# Enable Direct PCM Offload across all bit-depths (16/24/32-bit)
+audio.offload.pcm.16bit.enable=true
+audio.offload.pcm.24bit.enable=true
+audio.offload.pcm.32bit.enable=true
+audio.offload.gapless.enabled=true
+vendor.audio.flac.sw.decoder.24bit.support=true
+
+# High-Fidelity Audio HAL Direct Flags
+persist.vendor.audio.hifi=true
+vendor.audio.tunnel.encode=false
+audio.deep_buffer.media=true
+
+# AAudio Low-Latency MMAP Policy (Exclusive Direct Mode)
+aaudio.mmap_policy=2
+aaudio.mmap_exclusive_policy=2
+aaudio.hw_burst_min_usec=2000
+
+# Fast AudioFlinger Standby Timeout (free kernel sinks instantly when idle)
+ro.audio.flinger_standbytime_ms=1000
+
+# AudioFlinger Resampler Fallback (Highest sinc quality if mixer fallback occurs)
+af.resampler.quality=4
+

@@ -1,0 +1,42 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Bypass Audiophile Engine — Git Ignore Configuration
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Cloned comparative repos & external references
+Bit-perfect-Android/
+
+# Scratch & temporary testing environments
+scratch/
+*.bin
+*.log
+*.tmp
+*.bak
+
+# Module Zip Archives & APK builds
+*.zip
+*.tar
+*.tar.gz
+
+# Python caches & bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Android & Gradle Build Artifacts
+.gradle/
+**/.gradle/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+.kotlin/
+**/.kotlin/
+local.properties
+.idea/
+*.iml
+.cxx/
+captures/
+.externalNativeBuild/
+
+# OS specific files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Bypass Audiophile Engine</title>
+    <link rel="stylesheet" href="style.css?v=2.5">
+</head>
+<body>
+    <div class="mobile-wrapper">
+        <!-- Top App Bar -->
+        <header class="app-bar">
+            <div class="brand-line">
+                <div class="brand-title">
+                    <span class="brand-name">BYPASS</span>
+                    <span class="brand-tag">AUDIOPHILE ENGINE</span>
+                </div>
+                <div class="engine-pills">
+                    <span class="pill pill-direct" id="badgeHal">HAL DIRECT</span>
+                    <span class="pill pill-bypass" id="badgeFlinger">AF BYPASS</span>
+                </div>
+            </div>
+            
+            <!-- Sleek Top Stream Monitor (Mobile Grid) -->
+            <div class="stream-strip" id="topStreamStrip">
+                <div class="strip-item strip-left">
+                    <span class="strip-caption">SOURCE</span>
+                    <span class="strip-value" id="topSource">Standby</span>
+                </div>
+                <div class="strip-arrow">➔</div>
+                <div class="strip-item strip-mid">
+                    <span class="strip-caption">PROCESSING</span>
+                    <span class="strip-value" id="topStatus">Direct Pass</span>
+                </div>
+                <div class="strip-arrow">➔</div>
+                <div class="strip-item strip-right">
+                    <span class="strip-caption">ENDPOINT</span>
+                    <span class="strip-value" id="topEndpoint">Standby • 24b</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="content-scroll">
+            <!-- 5-Node Audio Signal Chain (Mobile Compact Rail) -->
+            <section class="panel-section">
+                <div class="panel-header">
+                    <span class="section-title">AUDIO SIGNAL CHAIN</span>
+                    <span class="zero-lock-pill" id="latencyIndicator">0.05ms ALSA Poll</span>
+                </div>
+
+                <div class="signal-rail">
+                    <!-- Node 1: Source -->
+                    <div class="rail-node" id="railNode1">
+                        <div class="node-indicator">
+                            <span class="node-num">01</span>
+                            <div class="rail-line"></div>
+                        </div>
+                        <div class="node-body">
+                            <div class="node-row-top">
+                                <span class="node-name">SOURCE STREAM</span>
+                                <span class="node-badge badge-muted" id="node1Badge">BIT-EXACT</span>
+                            </div>
+                            <div class="node-main-val" id="node1Title">BitChord Direct Stream</div>
+                            <div class="node-meta-line" id="node1Meta">FLAC / WAV • 48.0 kHz / 24-bit</div>
+                        </div>
+                    </div>
+
+                    <!-- Node 2: Decoder -->
+                    <div class="rail-node" id="railNode2">
+                        <div class="node-indicator">
+                            <span class="node-num">02</span>
+                            <div class="rail-line"></div>
+                        </div>
+                        <div class="node-body">
+                            <div class="node-row-top">
+                                <span class="node-name">DECODER SINK</span>
+                                <span class="node-badge badge-neutral" id="node2Badge">LOSSLESS</span>
+                            </div>
+                            <div class="node-main-val" id="node2Engine">libflac / FFmpeg Pass</div>
+                            <div class="node-meta-line">Direct Integer Stream • 100% Uncompressed</div>
+                        </div>
+                    </div>
+
+                    <!-- Node 3: Resampler Bypass -->
+                    <div class="rail-node active-bypass-node" id="railNode3">
+                        <div class="node-indicator">
+                            <span class="node-num">03</span>
+                            <div class="rail-line"></div>
+                        </div>
+                        <div class="node-body">
+                            <div class="node-row-top">
+                                <span class="node-name">SYSTEM RESAMPLER</span>
+                                <span class="node-badge badge-accent" id="node3Badge">BYPASS ACTIVE</span>
+                            </div>
+                            <div class="node-main-val accent-val" id="node3Status">Bypassed (1:1 Bit-Exact)</div>
+                            <div class="node-meta-line">Android 48 kHz Lock Defeated • 1:1 Clock Sync</div>
+                        </div>
+                    </div>
+
+                    <!-- Node 4: DSP -->
+                    <div class="rail-node" id="railNode4">
+                        <div class="node-indicator">
+                            <span class="node-num">04</span>
+                            <div class="rail-line"></div>
+                        </div>
+                        <div class="node-body">
+                            <div class="node-row-top">
+                                <span class="node-name">HARDWARE DSP</span>
+                                <span class="node-badge badge-neutral" id="node4Badge">BIT-PERFECT</span>
+                            </div>
+                            <div class="node-main-val" id="node4Dsp">Zero Bit Truncation</div>
+                            <div class="node-meta-line">Software FX Defeated • Direct UAC2 Pass</div>
+                        </div>
+                    </div>
+
+                    <!-- Node 5: Endpoint -->
+                    <div class="rail-node last-node" id="railNode5">
+                        <div class="node-indicator">
+                            <span class="node-num">05</span>
+                        </div>
+                        <div class="node-body">
+                            <div class="node-row-top">
+                                <span class="node-name">HARDWARE SINK</span>
+                                <span class="node-badge badge-gold" id="node5Badge">UAC2 DIRECT</span>
+                            </div>
+                            <div class="node-main-val gold-val" id="node5Device">Moondrop Chu II DSP</div>
+                            <div class="node-meta-line" id="node5Meta">KTMicro KT0210 • S24_3LE • 48.0 kHz</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Bluetooth Fallback Section (Strictly Hidden When USB/Internal Active) -->
+            <section class="panel-section bt-card-section" id="bluetoothSection" style="display: none;">
+                <div class="panel-header">
+                    <span class="section-title">BLUETOOTH WIRELESS SINK</span>
+                    <span class="node-badge badge-warn">A2DP ROUTE</span>
+                </div>
+                <div class="bt-content">
+                    <div class="bt-name-val" id="btDeviceName">Bluetooth Headset</div>
+                    <div class="bt-sub-val" id="btVerdict">Lossy Wireless Transmission</div>
+                    <div class="bt-grid">
+                        <div class="bt-col"><span class="bt-lbl">Codec:</span> <span class="bt-data" id="btCodec">LDAC</span></div>
+                        <div class="bt-col"><span class="bt-lbl">Rate:</span> <span class="bt-data" id="btSampleRate">96.0 kHz</span></div>
+                        <div class="bt-col"><span class="bt-lbl">Depth:</span> <span class="bt-data" id="btBitDepth">24-bit</span></div>
+                        <div class="bt-col"><span class="bt-lbl">Bitrate:</span> <span class="bt-data" id="btBitrate">990 kbps</span></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Card 1: Direct HAL & Output Stream -->
+            <section class="panel-section">
+                <div class="panel-header">
+                    <span class="section-title">DIRECT HAL & OUTPUT STREAM</span>
+                </div>
+                <div class="controls-group">
+                    <!-- Control 1: USB Exclusive Output -->
+                    <div class="control-row">
+                        <div class="control-info">
+                            <span class="control-label">USB Exclusive Output</span>
+                            <span class="control-help">Bypasses Android USB HAL & AudioFlinger mixer</span>
+                        </div>
+                        <label class="switch-ui">
+                            <input type="checkbox" id="switch-usb-exclusive" data-key="direct_bit_perfect_mode">
+                            <span class="slider-thumb"></span>
+                        </label>
+                    </div>
+
+                    <!-- Control 2: Bit-Perfect Rate Switching -->
+                    <div class="control-row">
+                        <div class="control-info">
+                            <span class="control-label">Dynamic Rate Switching</span>
+                            <span class="control-help">Reconfigures DAC hardware clock natively (44.1 - 192 kHz)</span>
+                        </div>
+                        <label class="switch-ui">
+                            <input type="checkbox" id="switch-rate-switching" data-key="bit_perfect_rate_switching">
+                            <span class="slider-thumb"></span>
+                        </label>
+                    </div>
+
+                    <!-- Control 3: Internal Direct Output -->
+                    <div class="control-row">
+                        <div class="control-info">
+                            <span class="control-label">Internal Direct Output</span>
+                            <span class="control-help">Bypasses mixer on phone speakers & 3.5mm via direct PCM</span>
+                        </div>
+                        <label class="switch-ui">
+                            <input type="checkbox" id="switch-internal-direct" data-key="internal_direct_output">
+                            <span class="slider-thumb"></span>
+                        </label>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Card 2: Hardware Volume & Attenuation -->
+            <section class="panel-section">
+                <div class="panel-header">
+                    <span class="section-title">HARDWARE VOLUME & ATTENUATION</span>
+                </div>
+                <div class="controls-group">
+                    <div class="control-row">
+                        <div class="control-info">
+                            <span class="control-label">DAC Hardware Volume Control</span>
+                            <span class="control-help">Controls DAC registers directly (UAC2 Feature Unit)</span>
+                        </div>
+                        <label class="switch-ui">
+                            <input type="checkbox" id="switch-hw-volume" data-key="usb_hardware_volume">
+                            <span class="slider-thumb"></span>
+                        </label>
+                    </div>
+
+                    <div class="volume-box">
+                        <div class="vol-label-row">
+                            <span class="vol-caption">ALSA PCM Register Attenuation</span>
+                            <span class="vol-readout" id="volDisplay">100% (0.0 dB)</span>
+                        </div>
+                        <input type="range" min="0" max="100" value="100" class="vol-slider" id="hwVolumeSlider">
+                    </div>
+                </div>
+            </section>
+
+            <!-- Card 3: Fidelity & Buffering -->
+            <section class="panel-section">
+                <div class="panel-header">
+                    <span class="section-title">FIDELITY & BUFFER TUNING</span>
+                </div>
+                <div class="controls-group">
+                    <!-- Control 5: FLAC Normalization -->
+                    <div class="segmented-control-group">
+                        <div class="seg-header-label">
+                            <span class="control-label">FLAC Normalization Bridge</span>
+                            <span class="control-help">Bit-Perfect disables software gain for 1:1 exact bits</span>
+                        </div>
+                        <div class="segmented-strip" id="segNormalization">
+                            <button class="seg-option active" data-val="BIT_PERFECT_OFF">Bit-Perfect (Off)</button>
+                            <button class="seg-option" data-val="REPLAY_GAIN_TRACK">ReplayGain</button>
+                            <button class="seg-option" data-val="DYNAMIC_NORMALIZATION">Dynamic</button>
+                        </div>
+                    </div>
+
+                    <!-- Control 6: Audio Buffer Sizing -->
+                    <div class="segmented-control-group">
+                        <div class="seg-header-label">
+                            <span class="control-label">Audio Buffer Length</span>
+                            <span class="control-help">PCM sink memory buffer. Maintains KT0210 anti-crackle stability</span>
+                        </div>
+                        <div class="segmented-strip" id="segBuffer">
+                            <button class="seg-option" data-val="LOW_LATENCY">250ms (Low)</button>
+                            <button class="seg-option" data-val="STANDARD">500ms (Std)</button>
+                            <button class="seg-option active" data-val="AUDIOPHILE_STABLE">1.5s (Stable)</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Card 4: System Subsystem Operations -->
+            <section class="panel-section">
+                <div class="panel-header">
+                    <span class="section-title">SYSTEM SERVICE OPERATIONS</span>
+                </div>
+                <div class="system-ops-card">
+                    <div class="ops-text">
+                        <span class="ops-label">Restart Audio Subsystem</span>
+                        <span class="ops-help">Restarts Android AudioServer and re-binds HAL pins without rebooting device</span>
+                    </div>
+                    <button class="action-btn" id="btnRestartAudio">
+                        <span class="btn-spinner" id="restartSpinner" style="display: none;"></span>
+                        <span class="btn-text" id="restartBtnText">Restart Audio Server</span>
+                    </button>
+                </div>
+                <div class="toast-notice" id="opsToast" style="display: none;"></div>
+            </section>
+
+            <!-- Card 5: ALSA Procfs Diagnostics -->
+            <section class="panel-section">
+                <div class="panel-header">
+                    <span class="section-title">KERNEL ALSA HARDWARE DIAGNOSTICS</span>
+                </div>
+                <div class="diag-rows">
+                    <div class="diag-line">
+                        <span class="diag-k">ALSA Endpoint:</span>
+                        <span class="diag-v" id="diag-interface">USB-Audio pcm0p</span>
+                    </div>
+                    <div class="diag-line">
+                        <span class="diag-k">Hardware Clock:</span>
+                        <span class="diag-v highlight-v" id="diag-clock">Standby</span>
+                    </div>
+                    <div class="diag-line">
+                        <span class="diag-k">PCM Bit Depth:</span>
+                        <span class="diag-v" id="diag-format">S24_3LE (24-bit)</span>
+                    </div>
+                    <div class="diag-line">
+                        <span class="diag-k">ALSA Period / Buffer:</span>
+                        <span class="diag-v" id="diag-period">256 / 512 frames</span>
+                    </div>
+                    <div class="diag-line">
+                        <span class="diag-k">Buffer Underruns:</span>
+                        <span class="diag-v highlight-v" id="diag-xruns">0 (Pristine Stream)</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="mobile-footer">
+            <span>Bypass Audiophile Engine v1.0.0</span>
+            <span class="footer-dot">•</span>
+            <span>BitChord Hardware Bridge</span>
+        </footer>
+    </div>
+
+    <script src="app.js?v=2.5"></script>
+</body>
+</html>

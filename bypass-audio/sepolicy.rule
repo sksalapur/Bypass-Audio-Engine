@@ -1,0 +1,24 @@
+# ═══════════════════════════════════════════════════════════════════
+# Bypass Audiophile Engine — SELinux Rules
+# Direct USB & Audio HAL permissions for BitChord & Audio Daemons
+# ═══════════════════════════════════════════════════════════════════
+
+# Allow untrusted app domains (BitChord) direct access to USB DAC hardware endpoints
+allow untrusted_app usb_device chr_file { open read write ioctl getattr }
+allow untrusted_app usbroot_device chr_file { open read write ioctl getattr }
+allow untrusted_app usb_device dir { search read open }
+allow untrusted_app-all usb_device chr_file { open read write ioctl getattr }
+allow untrusted_app-all usb_device dir { search read open }
+
+# Allow untrusted app direct access to audio nodes & ALSA controls
+allow untrusted_app audio_device chr_file { open read write ioctl getattr }
+allow untrusted_app audio_device dir { search read open }
+allow untrusted_app-all audio_device chr_file { open read write ioctl getattr }
+allow untrusted_app-all audio_device dir { search read open }
+
+# Allow Magisk / root daemon access to audio and USB nodes
+allow magisk audio_device chr_file { open read write ioctl getattr }
+allow magisk usb_device chr_file { open read write ioctl getattr }
+allow magisk audio_device dir { search read open }
+allow magisk usb_device dir { search read open }
+

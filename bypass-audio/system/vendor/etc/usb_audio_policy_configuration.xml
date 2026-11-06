@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Bypass Audiophile Engine: Injected Bit-Exact Direct USB Policy -->
+<module name="usb" halVersion="2.0">
+    <mixPorts>
+        <mixPort name="usb_accessory output" role="source">
+            <profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
+                     samplingRates="44100" channelMasks="AUDIO_CHANNEL_OUT_STEREO"/>
+        </mixPort>
+        <mixPort name="usb_device output" role="source">
+            <profile name="" format="AUDIO_FORMAT_PCM_16_BIT,AUDIO_FORMAT_PCM_24_BIT_PACKED,AUDIO_FORMAT_PCM_8_24_BIT,AUDIO_FORMAT_PCM_32_BIT,AUDIO_FORMAT_PCM_FLOAT"
+                     samplingRates="44100,48000,88200,96000,176400,192000" channelMasks="AUDIO_CHANNEL_OUT_STEREO"/>
+        </mixPort>
+        <!-- Bypass Audiophile Direct Bit-Perfect MixPort -->
+        <mixPort name="usb_direct_output" role="source"
+                 flags="AUDIO_OUTPUT_FLAG_DIRECT|AUDIO_OUTPUT_FLAG_RAW">
+            <profile name="" format="AUDIO_FORMAT_PCM_16_BIT,AUDIO_FORMAT_PCM_24_BIT_PACKED,AUDIO_FORMAT_PCM_8_24_BIT,AUDIO_FORMAT_PCM_32_BIT,AUDIO_FORMAT_PCM_FLOAT"
+                     samplingRates="44100,48000,88200,96000,176400,192000,352800,384000"
+                     channelMasks="AUDIO_CHANNEL_OUT_STEREO"/>
+        </mixPort>
+        <mixPort name="usb_device input" role="sink">
+            <profile name="" format="AUDIO_FORMAT_PCM_16_BIT,AUDIO_FORMAT_PCM_24_BIT_PACKED,AUDIO_FORMAT_PCM_8_24_BIT"
+                     samplingRates="44100,48000,96000" channelMasks="AUDIO_CHANNEL_IN_STEREO,AUDIO_CHANNEL_IN_MONO"/>
+        </mixPort>
+    </mixPorts>
+    <devicePorts>
+        <devicePort tagName="USB Host Out" type="AUDIO_DEVICE_OUT_USB_DEVICE" role="sink">
+            <profile name="" format="AUDIO_FORMAT_PCM_16_BIT,AUDIO_FORMAT_PCM_24_BIT_PACKED,AUDIO_FORMAT_PCM_8_24_BIT,AUDIO_FORMAT_PCM_32_BIT,AUDIO_FORMAT_PCM_FLOAT"
+                     samplingRates="44100,48000,88200,96000,176400,192000,352800,384000"
+                     channelMasks="AUDIO_CHANNEL_OUT_STEREO"/>
+        </devicePort>
+        <devicePort tagName="USB Headset Out" type="AUDIO_DEVICE_OUT_USB_HEADSET" role="sink">
+            <profile name="" format="AUDIO_FORMAT_PCM_16_BIT,AUDIO_FORMAT_PCM_24_BIT_PACKED,AUDIO_FORMAT_PCM_8_24_BIT,AUDIO_FORMAT_PCM_32_BIT,AUDIO_FORMAT_PCM_FLOAT"
+                     samplingRates="44100,48000,88200,96000,176400,192000,352800,384000"
+                     channelMasks="AUDIO_CHANNEL_OUT_STEREO"/>
+        </devicePort>
+        <devicePort tagName="USB Device In" type="AUDIO_DEVICE_IN_USB_DEVICE" role="source">
+            <profile name="" format="AUDIO_FORMAT_PCM_16_BIT,AUDIO_FORMAT_PCM_24_BIT_PACKED,AUDIO_FORMAT_PCM_8_24_BIT"
+                     samplingRates="44100,48000,96000"
+                     channelMasks="AUDIO_CHANNEL_IN_STEREO,AUDIO_CHANNEL_IN_MONO"/>
+        </devicePort>
+        <devicePort tagName="USB Headset In" type="AUDIO_DEVICE_IN_USB_HEADSET" role="source">
+            <profile name="" format="AUDIO_FORMAT_PCM_16_BIT,AUDIO_FORMAT_PCM_24_BIT_PACKED,AUDIO_FORMAT_PCM_8_24_BIT"
+                     samplingRates="44100,48000,96000"
+                     channelMasks="AUDIO_CHANNEL_IN_STEREO,AUDIO_CHANNEL_IN_MONO"/>
+        </devicePort>
+    </devicePorts>
+    <routes>
+        <route type="mix" sink="USB Host Out"
+               sources="usb_device output,usb_direct_output"/>
+        <route type="mix" sink="USB Headset Out"
+               sources="usb_device output,usb_direct_output"/>
+        <route type="mix" sink="usb_device input"
+               sources="USB Device In,USB Headset In"/>
+    </routes>
+</module>
