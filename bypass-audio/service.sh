@@ -34,6 +34,14 @@ pkill -9 -f "$MODDIR/scripts/server.sh" 2>/dev/null || true
         chmod -R a+rwX /dev/bus/usb 2>/dev/null || true
         chmod -R 777 /dev/bus/usb 2>/dev/null || true
 
+        # Dynamically isolate MTK Hi-Fi mode: ONLY enable when external USB DAC is plugged,
+        # strictly disabling it during Bluetooth A2DP streaming to prevent buffer starvation & gain mismatch.
+        if [ -f "/proc/asound/cards" ] && grep -qE '\[.*\]: USB-Audio' /proc/asound/cards 2>/dev/null; then
+            resetprop persist.vendor.audio.hifi true 2>/dev/null || setprop persist.vendor.audio.hifi true 2>/dev/null || true
+        else
+            resetprop persist.vendor.audio.hifi false 2>/dev/null || setprop persist.vendor.audio.hifi false 2>/dev/null || true
+        fi
+
         # Ensure server process is alive
         if ! pgrep -f "9090 -L" >/dev/null 2>&1; then
             nohup toybox nc -s 127.0.0.1 -p 9090 -L /system/bin/sh "$MODDIR/scripts/server.sh" </dev/null >/dev/null 2>&1 &

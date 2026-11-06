@@ -6,13 +6,16 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Build
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
+import java.io.File
 import java.lang.reflect.Modifier
 
 object BitChordHook {
@@ -23,6 +26,7 @@ object BitChordHook {
         XposedBridge.log("[BypassEngine] Attaching dynamic hardware bridge to BitChord...")
 
         hookAudioTrackDirectSupport()
+        hookAudioTrackBuilder()
         hookSnapshotTelemetry(lpparam.classLoader)
         hookVendorCodecMethod(lpparam.classLoader)
         scanAndHookCodecFormatter(lpparam.classLoader)
@@ -30,9 +34,77 @@ object BitChordHook {
     }
 
     /**
+     * Resolves an active application context independently of PlaybackService lifecycle.
+     */
+    private fun getApplicationContext(): Context? {
+        activePlaybackService?.applicationContext?.let { return it }
+        try {
+            val activityThreadClass = Class.forName("android.app.ActivityThread")
+            val currentApplicationMethod = activityThreadClass.getMethod("currentApplication")
+            val app = currentApplicationMethod.invoke(null) as? Context
+            if (app != null) return app
+        } catch (_: Throwable) {}
+        return null
+    }
+
+    /**
+     * Determines whether audio output is currently routing to Bluetooth A2DP.
+     * Prevents forcing direct playback flags on lossy wireless stacks.
+     */
+    private fun isBluetoothA2dpActive(): Boolean {
+        // Physical USB DAC takes strict priority: if USB-Audio exists in procfs, physical direct is valid
+        try {
+            val cards = File("/proc/asound/cards")
+            if (cards.exists() && cards.readText().contains("USB-Audio")) {
+                return false
+            }
+        } catch (_: Throwable) {}
+
+        // Query AudioManager devices via Application context or active service
+        val ctx = getApplicationContext()
+        if (ctx != null) {
+            try {
+                val am = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                if (am != null) {
+                    val devices = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                    val hasUsb = devices.any {
+                        it.type == AudioDeviceInfo.TYPE_USB_DEVICE ||
+                        it.type == AudioDeviceInfo.TYPE_USB_HEADSET
+                    }
+                    if (hasUsb) return false
+
+                    val hasBt = devices.any {
+                        it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                        it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                        it.type == AudioDeviceInfo.TYPE_HEARING_AID ||
+                        it.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                        it.type == AudioDeviceInfo.TYPE_BLE_SPEAKER ||
+                        it.type == AudioDeviceInfo.TYPE_BLE_BROADCAST
+                    }
+                    if (hasBt) return true
+                }
+            } catch (_: Throwable) {}
+        }
+
+        // Fast fallback: check cached Bluetooth state in telemetry cache file
+        try {
+            val btEnv = File("/data/local/tmp/bypass_telemetry/bt_parsed.env")
+            if (btEnv.exists()) {
+                val text = btEnv.readText()
+                if (text.contains("BT_CONNECTED=1")) {
+                    return true
+                }
+            }
+        } catch (_: Throwable) {}
+
+        return false
+    }
+
+    /**
      * Hook Android OS AudioTrack.isDirectPlaybackSupported
      * Ensures AudioPolicyManager returns true to BitChord for all audiophile stream formats
-     * when an external USB DAC or direct hardware output is connected.
+     * ONLY when an external USB DAC or direct internal hardware output is connected.
+     * Strictly blocks direct playback on Bluetooth A2DP to avoid buffer starvation and pops.
      */
     private fun hookAudioTrackDirectSupport() {
         try {
@@ -43,28 +115,22 @@ object BitChordHook {
                 AudioAttributes::class.java,
                 object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
-                        val attrs = param.args[1] as? AudioAttributes
-
-                        // If Bluetooth is active and no USB DAC is connected, do NOT force Direct
-                        // (Bluetooth A2DP is an encoded pipeline, not a direct ALSA hardware sink)
-                        val service = activePlaybackService
-                        if (service != null) {
-                            try {
-                                val am = service.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
-                                val devices = am?.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS) ?: emptyArray()
-                                val hasUsb = devices.any {
-                                    it.type == android.media.AudioDeviceInfo.TYPE_USB_DEVICE ||
-                                    it.type == android.media.AudioDeviceInfo.TYPE_USB_HEADSET
-                                }
-                                val hasBt = devices.any { it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP }
-                                if (hasBt && !hasUsb) {
-                                    return
-                                }
-                            } catch (_: Throwable) {}
+                        // CRITICAL ANTI-CRACKLE RULE:
+                        // If routing to Bluetooth A2DP, NEVER force direct playback!
+                        // Bluetooth A2DP requires AudioFlinger mixer encoding (LHDC/LDAC/AAC).
+                        // Bypassing to direct output on Bluetooth causes buffer starvation & earbud cracking.
+                        if (isBluetoothA2dpActive()) {
+                            return // Let system AudioPolicy return false naturally
                         }
 
+                        val attrs = param.args[1] as? AudioAttributes
+
+                        // Only force direct playback when physical USB or internal PCM is active
                         if (attrs != null && (attrs.usage == AudioAttributes.USAGE_MEDIA || attrs.contentType == AudioAttributes.CONTENT_TYPE_MUSIC)) {
-                            param.result = true
+                            val cards = File("/proc/asound/cards")
+                            if (cards.exists()) {
+                                param.result = true
+                            }
                         }
                     }
                 }
@@ -72,6 +138,32 @@ object BitChordHook {
             XposedBridge.log("[BypassEngine] Successfully hooked AudioTrack.isDirectPlaybackSupported")
         } catch (t: Throwable) {
             XposedBridge.log("[BypassEngine] Error hooking isDirectPlaybackSupported: ${t.message}")
+        }
+    }
+
+    /**
+     * Hooks AudioTrack.Builder to forbid offloaded/direct playback when routing to Bluetooth.
+     */
+    private fun hookAudioTrackBuilder() {
+        try {
+            val builderClass = XposedHelpers.findClassIfExists("android.media.AudioTrack\$Builder", null)
+            if (builderClass != null) {
+                XposedHelpers.findAndHookMethod(
+                    builderClass,
+                    "setOffloadedPlayback",
+                    Boolean::class.javaPrimitiveType,
+                    object : XC_MethodHook() {
+                        override fun beforeHookedMethod(param: MethodHookParam) {
+                            if (isBluetoothA2dpActive()) {
+                                param.args[0] = false
+                            }
+                        }
+                    }
+                )
+                XposedBridge.log("[BypassEngine] Successfully hooked AudioTrack.Builder.setOffloadedPlayback")
+            }
+        } catch (t: Throwable) {
+            XposedBridge.log("[BypassEngine] Error hooking AudioTrack.Builder: ${t.message}")
         }
     }
 
@@ -212,7 +304,8 @@ object BitChordHook {
                 } catch (_: Throwable) {}
             }
 
-            if (routeKindStr.contains("BLUETOOTH", ignoreCase = true) ||
+            if (isBluetoothA2dpActive() ||
+                routeKindStr.contains("BLUETOOTH", ignoreCase = true) ||
                 currentDeviceName.contains("Buds", ignoreCase = true) ||
                 currentDeviceName.contains("realme", ignoreCase = true) ||
                 currentDeviceName.contains("Bluetooth", ignoreCase = true)) {

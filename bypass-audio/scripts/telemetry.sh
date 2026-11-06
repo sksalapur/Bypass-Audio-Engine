@@ -1,9 +1,18 @@
 #!/system/bin/sh
 # ══════════════════════════════════════════════════════════════════════════════
-# Bypass Audiophile Engine — Zero-Lock Telemetry Polling Engine
-# Anti-Crackle Rule: NEVER invoke dumpsys media.audio_flinger!
-# Reads kernel ALSA /proc/asound, dumpsys bluetooth_manager & media_session
+# Bypass Audiophile Engine — High-Performance Zero-Lock Telemetry Engine
+# Optimized to eliminate Bluetooth A2DP mutex starvation and buffer cracking.
+# Features TTL-caching for dumpsys calls and instant procfs ALSA reads.
 # ══════════════════════════════════════════════════════════════════════════════
+
+# Cache directory & setup
+CACHE_DIR="/data/local/tmp/bypass_telemetry"
+[ -d "$CACHE_DIR" ] || mkdir -p "$CACHE_DIR" 2>/dev/null
+
+SCRIPTS_DIR="${0%/*}"
+[ -z "$SCRIPTS_DIR" ] || [ "$SCRIPTS_DIR" = "." ] && SCRIPTS_DIR="/data/adb/modules/bypass-audio/scripts"
+
+NOW=$(date +%s 2>/dev/null || echo 0)
 
 # Default values
 PLAYBACK_STATE="STANDBY"
@@ -18,62 +27,71 @@ HW_BUFFER_SIZE=0
 CARD_NAME=""
 CARD_CHIP=""
 CARD_NUM=""
+BT_SUPPRESSED="true"
+BT_JSON="null"
 
-# 1. Fast Media Session Inspection (< 5 ms, no mutex contention)
-MS_DUMP=$(dumpsys media_session 2>/dev/null)
-MEDIA_TITLE="BitChord Track"
-MEDIA_ARTIST="BitChord Playback"
-MEDIA_PKG="com.music.bitchord"
-MS_PLAYING=0
+# 1. Fast Media Session Inspection with 3-second TTL Cache
+MS_ENV="$CACHE_DIR/ms_parsed.env"
+MS_MTIME=$(stat -c %Y "$MS_ENV" 2>/dev/null || echo 0)
+MS_AGE=$((NOW - MS_MTIME))
 
-if echo "$MS_DUMP" | grep -qE "state=3|state=PlaybackState \{state=3"; then
-    MS_PLAYING=1
-fi
-
-# Detect active package from media session stack
-PKG_DETECTED=$(echo "$MS_DUMP" | grep -B 2 -A 2 "state=PlaybackState {state=3" | grep -o 'package=[^ ]*' | head -n1 | sed 's/package=//' | tr -d '"\r\n\\ ')
-if [ -z "$PKG_DETECTED" ]; then
-    PKG_DETECTED=$(echo "$MS_DUMP" | grep -o 'package=[^ ]*' | grep -vE 'com.android.server.telecom|com.google.android.gms|system' | head -n1 | sed 's/package=//' | tr -d '"\r\n\\ ')
-fi
-if [ -n "$PKG_DETECTED" ]; then
-    MEDIA_PKG="$PKG_DETECTED"
-fi
-
-DESC_LINE=$(echo "$MS_DUMP" | grep -o 'description=[^,]*' | head -n1 | sed 's/description=//' | sed 's/^[ \t]*//;s/[ \t]*$//' | tr -d '"\r\n\\')
-if [ -n "$DESC_LINE" ] && [ "$DESC_LINE" != "null" ]; then
-    MEDIA_TITLE="$DESC_LINE"
-fi
-
-ARTIST_LINE=$(echo "$MS_DUMP" | grep -o 'description=[^,]*, *[^,]*' | head -n1 | sed 's/.*, *//' | sed 's/^[ \t]*//;s/[ \t]*$//' | tr -d '"\r\n\\')
-if [ -n "$ARTIST_LINE" ] && [ "$ARTIST_LINE" != "$MEDIA_TITLE" ] && [ "$ARTIST_LINE" != "null" ]; then
-    MEDIA_ARTIST="$ARTIST_LINE"
-fi
-
-# 1b. Fast Media Metrics Stream & Codec Resolution Inspection (< 5 ms)
-METRICS_CONTAINER="FLAC / WAV"
-METRICS_RATE=0
-METRICS_DUMP=$(dumpsys media.metrics 2>/dev/null | grep -E '(\{codec,|\{audio\.track\.|\{audio\.thread\.)' | tail -n 25)
-if [ -n "$METRICS_DUMP" ]; then
-    SR_MATCH=$(echo "$METRICS_DUMP" | grep -o 'sampleRate=[0-9]*\|sample_rate:[0-9]*' | tail -n1 | sed 's/.*[=:]//' | tr -d '\r\n ')
-    if [ -n "$SR_MATCH" ] && [ "$SR_MATCH" -gt 0 ] 2>/dev/null; then
-        METRICS_RATE="$SR_MATCH"
+if [ "$MS_AGE" -ge 0 ] && [ "$MS_AGE" -lt 3 ] && [ -f "$MS_ENV" ]; then
+    . "$MS_ENV"
+else
+    dumpsys media_session 2>/dev/null > "$CACHE_DIR/ms_dump.cache"
+    if [ -f "$SCRIPTS_DIR/parse_ms.awk" ]; then
+        awk -f "$SCRIPTS_DIR/parse_ms.awk" "$CACHE_DIR/ms_dump.cache" > "$MS_ENV" 2>/dev/null
+    else
+        awk '
+        BEGIN { playing=0; pkg="com.music.bitchord"; title="BitChord Track"; artist="BitChord Playback"; }
+        /package=/ { match($0, /package=[^ ]*/); if (RSTART>0) { p=substr($0, RSTART+8, RLENGTH-8); gsub(/[\r\n"\\ ]/, "", p); if (p!="com.android.server.telecom" && p!="com.google.android.gms" && p!="system" && p!="") pkg=p; } }
+        /state=PlaybackState \{state=3/ || /state=3/ { playing=1; }
+        /metadata:.*description=/ {
+            match($0, /description=[^,\r\n]*/); if (RSTART>0) { t=substr($0, RSTART+12, RLENGTH-12); gsub(/^ +| +$/, "", t); gsub(/[\r\n"\\]/, "", t); if (t!="" && t!="null") title=t; }
+            match($0, /description=[^,]*, *[^,\r\n]*/); if (RSTART>0) { s=substr($0, RSTART+12, RLENGTH-12); sub(/.*, */, "", s); gsub(/^ +| +$/, "", s); gsub(/[\r\n"\\]/, "", s); if (s!="" && s!="null" && s!=title) artist=s; }
+        }
+        END { print "MS_PLAYING=" playing; print "MEDIA_PKG=\"" pkg "\""; print "MEDIA_TITLE=\"" title "\""; print "MEDIA_ARTIST=\"" artist "\""; }
+        ' "$CACHE_DIR/ms_dump.cache" > "$MS_ENV" 2>/dev/null
     fi
-
-    if echo "$METRICS_DUMP" | grep -qi "flac"; then
-        METRICS_CONTAINER="FLAC"
-    elif echo "$METRICS_DUMP" | grep -qi "opus"; then
-        METRICS_CONTAINER="Opus"
-    elif echo "$METRICS_DUMP" | grep -qi "aac"; then
-        METRICS_CONTAINER="AAC"
-    elif echo "$METRICS_DUMP" | grep -qi "alac"; then
-        METRICS_CONTAINER="ALAC"
-    elif echo "$METRICS_DUMP" | grep -qi "mp3"; then
-        METRICS_CONTAINER="MP3"
-    fi
+    . "$MS_ENV"
 fi
 
-# Friendly App Name & Video App Detection
-MEDIA_APP_NAME="Music Player"
+[ -z "$MEDIA_PKG" ] && MEDIA_PKG="com.music.bitchord"
+[ -z "$MEDIA_TITLE" ] && MEDIA_TITLE="BitChord Track"
+[ -z "$MEDIA_ARTIST" ] && MEDIA_ARTIST="BitChord Playback"
+[ -z "$MS_PLAYING" ] && MS_PLAYING=0
+
+# 2. Fast Media Metrics Stream Inspection with 3-second TTL Cache
+MM_ENV="$CACHE_DIR/mm_parsed.env"
+MM_MTIME=$(stat -c %Y "$MM_ENV" 2>/dev/null || echo 0)
+MM_AGE=$((NOW - MM_MTIME))
+
+if [ "$MM_AGE" -ge 0 ] && [ "$MM_AGE" -lt 3 ] && [ -f "$MM_ENV" ]; then
+    . "$MM_ENV"
+else
+    dumpsys media.metrics 2>/dev/null | grep -E '(\{codec,|\{audio\.track\.)' | tail -n 25 > "$CACHE_DIR/mm_dump.cache"
+    if [ -f "$SCRIPTS_DIR/parse_mm.awk" ]; then
+        awk -f "$SCRIPTS_DIR/parse_mm.awk" "$CACHE_DIR/mm_dump.cache" > "$MM_ENV" 2>/dev/null
+    else
+        awk '
+        BEGIN { rate=0; container="FLAC / WAV"; }
+        /sampleRate=[0-9]*/ { match($0, /sampleRate=[0-9]*/); if (RSTART>0) { s=substr($0, RSTART+11, RLENGTH-11); if (s+0>0) rate=s+0; } }
+        /sample_rate:[0-9]*/ { match($0, /sample_rate:[0-9]*/); if (RSTART>0) { s=substr($0, RSTART+12, RLENGTH-12); if (s+0>0) rate=s+0; } }
+        /[Ff][Ll][Aa][Cc]/ { container="FLAC"; }
+        /[Oo][Pp][Uu][Ss]/ { container="Opus"; }
+        /[Aa][Aa][Cc]/ { container="AAC"; }
+        /[Aa][Ll][Aa][Cc]/ { container="ALAC"; }
+        /[Mm][Pp]3/ { container="MP3"; }
+        END { print "METRICS_RATE=" rate; print "METRICS_CONTAINER=\"" container "\""; }
+        ' "$CACHE_DIR/mm_dump.cache" > "$MM_ENV" 2>/dev/null
+    fi
+    . "$MM_ENV"
+fi
+
+[ -z "$METRICS_CONTAINER" ] && METRICS_CONTAINER="FLAC / WAV"
+[ -z "$METRICS_RATE" ] && METRICS_RATE=0
+
+# Friendly App Name & Video App Detection (Zero-cost pure shell case)
 case "$MEDIA_PKG" in
     *bitchord*) MEDIA_APP_NAME="BitChord" ;;
     *apple*music*) MEDIA_APP_NAME="Apple Music" ;;
@@ -100,7 +118,7 @@ case "$MEDIA_PKG" in
         ;;
 esac
 
-# 2. Inspect kernel ALSA sound cards via /proc/asound/cards
+# 3. Inspect kernel ALSA sound cards via /proc/asound/cards (< 0.05 ms)
 USB_CARD_FOUND=0
 if [ -f "/proc/asound/cards" ]; then
     USB_LINE=$(grep -E '\[.*\]: USB-Audio' /proc/asound/cards 2>/dev/null | head -n1)
@@ -120,18 +138,19 @@ if [ -f "/proc/asound/cards" ]; then
             CARD_CHIP="USB Audio Class 2.0 DAC"
         fi
 
-        # Check if USB audio sub0 is actively playing
         HW_PARAMS="/proc/asound/card$CARD_NUM/pcm0p/sub0/hw_params"
         if [ -f "$HW_PARAMS" ]; then
             CONTENT=$(cat "$HW_PARAMS" 2>/dev/null)
             if [ -n "$CONTENT" ] && [ "$CONTENT" != "closed" ]; then
                 PLAYBACK_STATE="PLAYING"
                 IS_USB_ACTIVE=1
-                HW_RATE=$(echo "$CONTENT" | grep "^rate:" | head -n1 | awk '{print $2}' | tr -d '\r\n ')
-                HW_FORMAT=$(echo "$CONTENT" | grep "^format:" | head -n1 | awk '{print $2}' | tr -d '\r\n ')
-                HW_CHANNELS=$(echo "$CONTENT" | grep "^channels:" | head -n1 | awk '{print $2}' | tr -d '\r\n ')
-                HW_PERIOD_SIZE=$(echo "$CONTENT" | grep "^period_size:" | head -n1 | awk '{print $2}' | tr -d '\r\n ')
-                HW_BUFFER_SIZE=$(echo "$CONTENT" | grep "^buffer_size:" | head -n1 | awk '{print $2}' | tr -d '\r\n ')
+                eval $(awk '
+                /rate:/ { print "HW_RATE=" $2 }
+                /format:/ { print "HW_FORMAT=\"" $2 "\"" }
+                /channels:/ { print "HW_CHANNELS=" $2 }
+                /period_size:/ { print "HW_PERIOD_SIZE=" $2 }
+                /buffer_size:/ { print "HW_BUFFER_SIZE=" $2 }
+                ' "$HW_PARAMS" 2>/dev/null)
             elif [ "$MS_PLAYING" -eq 1 ]; then
                 PLAYBACK_STATE="PLAYING"
                 IS_USB_ACTIVE=1
@@ -139,107 +158,73 @@ if [ -f "/proc/asound/cards" ]; then
         fi
     fi
 
-    # Check internal sound cards if USB is not present
-    if [ "$USB_CARD_FOUND" -eq 0 ]; then
-        for P in /proc/asound/card0/pcm*p/sub0/hw_params; do
-            if [ -f "$P" ]; then
-                CONTENT=$(cat "$P" 2>/dev/null)
-                if [ -n "$CONTENT" ] && [ "$CONTENT" != "closed" ]; then
-                    PLAYBACK_STATE="PLAYING"
-                    IS_INTERNAL_ACTIVE=1
-                    ACTIVE_ENDPOINT="INTERNAL_DAC"
-                    CARD_NAME="Internal Hi-Fi Direct PCM"
-                    CARD_CHIP="Qualcomm Hexagon DSP / MediaTek HiFi"
-                    HW_RATE=$(echo "$CONTENT" | grep "^rate:" | head -n1 | awk '{print $2}' | tr -d '\r\n ')
-                    HW_FORMAT=$(echo "$CONTENT" | grep "^format:" | head -n1 | awk '{print $2}' | tr -d '\r\n ')
-                    HW_CHANNELS=$(echo "$CONTENT" | grep "^channels:" | head -n1 | awk '{print $2}' | tr -d '\r\n ')
-                    HW_PERIOD_SIZE=$(echo "$CONTENT" | grep "^period_size:" | head -n1 | awk '{print $2}' | tr -d '\r\n ')
-                    HW_BUFFER_SIZE=$(echo "$CONTENT" | grep "^buffer_size:" | head -n1 | awk '{print $2}' | tr -d '\r\n ')
-                    break
-                fi
-            fi
-        done
+    # Check internal sound cards ONLY if USB is not present (< 20 ms)
+    if [ "$USB_CARD_FOUND" -eq 0 ] && [ -d "/proc/asound/card0" ]; then
+        ACTIVE_PCM=$(grep -l -v "closed" /proc/asound/card0/pcm*p/sub0/hw_params 2>/dev/null | head -n1)
+        if [ -n "$ACTIVE_PCM" ] && [ -f "$ACTIVE_PCM" ]; then
+            PLAYBACK_STATE="PLAYING"
+            IS_INTERNAL_ACTIVE=1
+            ACTIVE_ENDPOINT="INTERNAL_DAC"
+            CARD_NAME="Internal Hi-Fi Direct PCM"
+            CARD_CHIP="Qualcomm Hexagon DSP / MediaTek HiFi"
+            eval $(awk '
+            /rate:/ { print "HW_RATE=" $2 }
+            /format:/ { print "HW_FORMAT=\"" $2 "\"" }
+            /channels:/ { print "HW_CHANNELS=" $2 }
+            /period_size:/ { print "HW_PERIOD_SIZE=" $2 }
+            /buffer_size:/ { print "HW_BUFFER_SIZE=" $2 }
+            ' "$ACTIVE_PCM" 2>/dev/null)
+        fi
     fi
 fi
 
-# 3. Bluetooth Stack Inspection (Only active when USB DAC is disconnected)
-BT_JSON="null"
-BT_SUPPRESSED="true"
-BT_CONNECTED=0
-BT_STREAMING=0
-BT_CODEC="AAC"
-BT_DEVICE="Bluetooth Headset"
-BT_RATE=44100
-BT_BITS=16
-BT_BITRATE="328 kbps"
-
+# 4. Bluetooth Stack Inspection (STRICT SKIP if USB DAC or Internal DAC is active)
+# Anti-Crackle Rule: Never call raw dumpsys bluetooth_manager on every poll!
+# Uses 15-second TTL file cache to prevent holding com.android.bluetooth A2DP locks.
 if [ "$USB_CARD_FOUND" -eq 0 ] && [ "$IS_INTERNAL_ACTIVE" -eq 0 ]; then
-    BT_DUMP=$(dumpsys bluetooth_manager 2>/dev/null)
-    if echo "$BT_DUMP" | grep -qE "Connected: true|ConnectionState: STATE_CONNECTED|mActiveDevice: [0-9a-fA-F:]+|StateMachine: name=A2dpStateMachine state=Connected"; then
-        BT_CONNECTED=1
-    fi
+    BT_ENV="$CACHE_DIR/bt_parsed.env"
+    BT_MTIME=$(stat -c %Y "$BT_ENV" 2>/dev/null || echo 0)
+    BT_AGE=$((NOW - BT_MTIME))
 
-    if echo "$BT_DUMP" | grep -qE "Streaming: true|A2dpStackEvent .*EVENT_TYPE_AUDIO_STATE_CHANGED.*STARTED"; then
-        BT_STREAMING=1
+    if [ "$BT_AGE" -ge 0 ] && [ "$BT_AGE" -lt 15 ] && [ -f "$BT_ENV" ]; then
+        . "$BT_ENV"
+    else
+        PROP_CODEC=$(getprop persist.bypass.audio.bt_codec 2>/dev/null)
+        PROP_BITRATE=$(getprop persist.bypass.audio.bt_bitrate 2>/dev/null)
+
+        dumpsys bluetooth_manager 2>/dev/null > "$CACHE_DIR/bt_dump.cache"
+        if [ -f "$SCRIPTS_DIR/parse_bt.awk" ]; then
+            awk -v prop_codec="$PROP_CODEC" -v prop_bitrate="$PROP_BITRATE" \
+                -f "$SCRIPTS_DIR/parse_bt.awk" "$CACHE_DIR/bt_dump.cache" > "$BT_ENV" 2>/dev/null
+        else
+            awk -v prop_codec="$PROP_CODEC" -v prop_bitrate="$PROP_BITRATE" '
+            BEGIN { connected=0; streaming=0; codec=(prop_codec!="")?prop_codec:"AAC"; dev="Bluetooth Headset"; rate=44100; bits=16; bitrate=(prop_bitrate!="")?prop_bitrate:"328 kbps"; }
+            /Connected: true|ConnectionState: STATE_CONNECTED|mActiveDevice: [0-9a-fA-F:]+|state=Connected/ { connected=1; }
+            /Streaming: true|EVENT_TYPE_AUDIO_STATE_CHANGED.*STARTED/ { streaming=1; }
+            /model_name=/ { match($0, /model_name=[^|)]*/); if (RSTART>0 && dev=="Bluetooth Headset") { dev=substr($0, RSTART+11, RLENGTH-11); gsub(/[\r\n"\\]/, "", dev); } }
+            /Current Codec:/ { if ($3!="") codec=$3; }
+            /mSampleRate:0x[0-9a-fA-F]*\([0-9]*\)/ { match($0, /mSampleRate:0x[0-9a-fA-F]*\([0-9]*\)/); if (RSTART>0) { s=substr($0, RSTART, RLENGTH); sub(/.*\(/, "", s); sub(/\).*/, "", s); if (s+0>0) rate=s+0; } }
+            /mBitsPerSample:0x[0-9a-fA-F]*\([0-9]*\)/ { match($0, /mBitsPerSample:0x[0-9a-fA-F]*\([0-9]*\)/); if (RSTART>0) { s=substr($0, RSTART, RLENGTH); sub(/.*\(/, "", s); sub(/\).*/, "", s); if (s+0>0) bits=s+0; } }
+            /LHDC transmission bitrate/ { if ($6!="" && $6!="-1") bitrate=$6 " kbps (ABR)"; }
+            END {
+                if (codec ~ /^LHDC/) { if (codec=="LHDC_V2") codec="LHDC Version 2"; else codec="LHDC Version 5"; }
+                else if (codec ~ /LDAC/ && bitrate=="328 kbps") bitrate="990 kbps";
+                else if (codec ~ /AAC/ && bitrate=="328 kbps") bitrate="256 kbps";
+                print "BT_CONNECTED=" connected; print "BT_STREAMING=" streaming; print "BT_CODEC=\"" codec "\""; print "BT_DEVICE=\"" dev "\""; print "BT_RATE=" rate; print "BT_BITS=" bits; print "BT_BITRATE=\"" bitrate "\"";
+            }
+            ' "$CACHE_DIR/bt_dump.cache" > "$BT_ENV" 2>/dev/null
+        fi
+        . "$BT_ENV"
     fi
 
     if [ "$BT_CONNECTED" -eq 1 ]; then
-        # Parse Codec
-        CODEC_MATCH=$(echo "$BT_DUMP" | grep "Current Codec:" | head -n1 | awk '{print $3}' | tr -d '\r\n ')
-        if [ -n "$CODEC_MATCH" ]; then
-            case "$CODEC_MATCH" in
-                LHDC_V3|LHDC_V4|LHDC_V5|LHDC)
-                    BT_CODEC="LHDC Version 5"
-                    ;;
-                LHDC_V2)
-                    BT_CODEC="LHDC Version 2"
-                    ;;
-                *)
-                    BT_CODEC="$CODEC_MATCH"
-                    ;;
-            esac
-        fi
-
-        # Parse Device Name
-        DEV_MATCH=$(echo "$BT_DUMP" | grep -o 'model_name=[^|]*' | head -n1 | sed 's/model_name=//' | tr -d '"\r\n\\')
-        if [ -n "$DEV_MATCH" ]; then
-            BT_DEVICE="$DEV_MATCH"
-        else
-            DEV_BONDED=$(echo "$BT_DUMP" | grep -A1 "Bonded devices:" | tail -n1 | sed 's/^[ \t]*[0-9A-Fa-f:]*[ \t]*\[[^]]*\][ \t]*//' | tr -d '"\r\n\\')
-            if [ -n "$DEV_BONDED" ]; then
-                BT_DEVICE="$DEV_BONDED"
-            fi
-        fi
-
-        # Parse Sample Rate & Bit Depth
-        RATE_MATCH=$(echo "$BT_DUMP" | grep -o 'mSampleRate:0x[0-9a-fA-F]*([0-9]*)' | head -n1 | sed 's/.*(//;s/)//')
-        if [ -n "$RATE_MATCH" ] && [ "$RATE_MATCH" -gt 0 ] 2>/dev/null; then
-            BT_RATE="$RATE_MATCH"
-        fi
-
-        BITS_MATCH=$(echo "$BT_DUMP" | grep -o 'mBitsPerSample:0x[0-9a-fA-F]*([0-9]*)' | head -n1 | sed 's/.*(//;s/)//')
-        if [ -n "$BITS_MATCH" ] && [ "$BITS_MATCH" -gt 0 ] 2>/dev/null; then
-            BT_BITS="$BITS_MATCH"
-        fi
-
-        # Parse Bitrate
-        LHDC_BR=$(echo "$BT_DUMP" | grep "LHDC transmission bitrate (Kbps)" | head -n1 | awk '{print $6}' | tr -d '\r\n ')
-        if [ -n "$LHDC_BR" ] && [ "$LHDC_BR" != "-1" ] && [ "$LHDC_BR" -gt 0 ] 2>/dev/null; then
-            BT_BITRATE="${LHDC_BR} kbps (ABR)"
-        elif echo "$BT_CODEC" | grep -qi "LDAC"; then
-            BT_BITRATE="990 kbps"
-        elif echo "$BT_CODEC" | grep -qi "AAC"; then
-            BT_BITRATE="256 kbps"
-        fi
-
-        # Mark Bluetooth as active endpoint
         ACTIVE_ENDPOINT="BLUETOOTH"
         BT_SUPPRESSED="false"
+
         if [ "$BT_STREAMING" -eq 1 ] || [ "$MS_PLAYING" -eq 1 ]; then
             PLAYBACK_STATE="PLAYING"
         fi
 
-        # Determine Bluetooth verdict
         case "$BT_CODEC" in
             *LHDC*|*LDAC*|*aptX-HD*|*aptX*HD*)
                 BT_VERDICT="HI-RES WIRELESS (Lossy Bluetooth transmission via AudioFlinger)"

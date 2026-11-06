@@ -93,6 +93,59 @@ case "$URI_PATH" in
         printf "%s" "$PAYLOAD"
         ;;
 
+    /api/bitchord_queue)
+        PAYLOAD=$(cat /data/data/com.music.bitchord/shared_prefs/bitchord_last_played.xml 2>/dev/null || echo '<map></map>')
+        CLEN=$(printf "%s" "$PAYLOAD" | wc -c | tr -d ' ')
+        send_headers "200 OK" "application/xml; charset=utf-8" "$CLEN"
+        printf "%s" "$PAYLOAD"
+        ;;
+
+    /api/bitchord_stats)
+        FILES=$(ls /data/data/com.music.bitchord/files/listening/*.json 2>/dev/null)
+        if [ -n "$FILES" ]; then
+            send_headers "200 OK" "application/json; charset=utf-8"
+            printf "["
+            FIRST=1
+            for F in $FILES; do
+                [ $FIRST -eq 0 ] && printf ","
+                cat "$F"
+                FIRST=0
+            done
+            printf "]"
+        else
+            send_headers "200 OK" "application/json; charset=utf-8" "2"
+            printf "[]"
+        fi
+        ;;
+
+    /api/buds_status)
+        PREFS="/data/data/com.music.bypass/shared_prefs/realme_anc_prefs.xml"
+        if [ -f "$PREFS" ]; then
+            BATT=$(grep -o 'name="cached_battery" value="[0-9]*"' "$PREFS" 2>/dev/null | cut -d'"' -f4)
+            MODE=$(grep -o 'name="active_mode">[^<]*' "$PREFS" 2>/dev/null | cut -d'>' -f2)
+            [ -z "$BATT" ] && BATT="-1"
+            [ -z "$MODE" ] && MODE="ANC"
+            BODY="{\"battery\":$BATT,\"mode\":\"$MODE\"}"
+            send_headers "200 OK" "application/json; charset=utf-8" "${#BODY}"
+            printf "%s" "$BODY"
+        else
+            send_headers "200 OK" "application/json; charset=utf-8" "27"
+            printf '{"battery":-1,"mode":"ANC"}'
+        fi
+        ;;
+
+    /api/set_anc)
+        PARAM_MODE=$(get_param "mode")
+        if [ -n "$PARAM_MODE" ]; then
+            am broadcast -a com.music.bypass.ACTION_SET_ANC_MODE -p com.music.bypass --es extra_mode "$PARAM_MODE" >/dev/null 2>&1
+            BODY="{\"success\":true,\"mode\":\"$PARAM_MODE\"}"
+        else
+            BODY='{"success":false,"error":"Missing mode parameter"}'
+        fi
+        send_headers "200 OK" "application/json; charset=utf-8" "${#BODY}"
+        printf "%s" "$BODY"
+        ;;
+
     /api/controls|/api/settings)
         PAYLOAD=$(/system/bin/sh "$MODDIR/scripts/controls.sh" get 2>/dev/null)
         CLEN=$(printf "%s" "$PAYLOAD" | wc -c | tr -d ' ')

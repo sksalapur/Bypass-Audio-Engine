@@ -16,8 +16,7 @@ audio.offload.pcm.32bit.enable=true
 audio.offload.gapless.enabled=true
 vendor.audio.flac.sw.decoder.24bit.support=true
 
-# High-Fidelity Audio HAL Direct Flags
-persist.vendor.audio.hifi=true
+# Audio HAL Routing & Low-Latency Flags
 vendor.audio.tunnel.encode=false
 audio.deep_buffer.media=true
 
@@ -26,9 +25,6 @@ aaudio.mmap_policy=2
 aaudio.mmap_exclusive_policy=2
 aaudio.hw_burst_min_usec=2000
 
-# Fast AudioFlinger Standby Timeout (free kernel sinks instantly when idle)
-ro.audio.flinger_standbytime_ms=1000
-
-# AudioFlinger Resampler Fallback (Highest sinc quality if mixer fallback occurs)
-af.resampler.quality=4
+# AudioFlinger Standby Timeout (Standard Android 3000ms to avoid standby thrashing)
+ro.audio.flinger_standbytime_ms=3000
 
