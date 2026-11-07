@@ -124,10 +124,31 @@ class AncWidgetProvider : AppWidgetProvider() {
                 context.sendBroadcast(intent)
             }
             try {
-                val updateIntent = Intent(ACTION_WIDGET_UPDATE).apply {
+                val mode = AncManager.getActiveMode(context)
+                val batt = AncManager.getCachedBattery(context)
+                val battL = AncManager.getCachedBatteryLeft(context)
+                val battR = AncManager.getCachedBatteryRight(context)
+                val battC = AncManager.getCachedBatteryCase(context)
+
+                val internalIntent = Intent(ACTION_WIDGET_UPDATE).apply {
                     setPackage(context.packageName)
+                    putExtra(EXTRA_MODE, mode)
+                    putExtra("extra_battery", batt)
+                    putExtra("extra_battery_left", battL)
+                    putExtra("extra_battery_right", battR)
+                    putExtra("extra_battery_case", battC)
                 }
-                context.sendBroadcast(updateIntent)
+                context.sendBroadcast(internalIntent)
+
+                val dapIntent = Intent(ACTION_WIDGET_UPDATE).apply {
+                    setPackage("com.camellia.dap")
+                    putExtra(EXTRA_MODE, mode)
+                    putExtra("extra_battery", batt)
+                    putExtra("extra_battery_left", battL)
+                    putExtra("extra_battery_right", battR)
+                    putExtra("extra_battery_case", battC)
+                }
+                context.sendBroadcast(dapIntent)
             } catch (_: Exception) {}
         }
 

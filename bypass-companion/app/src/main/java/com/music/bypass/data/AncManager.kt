@@ -22,6 +22,9 @@ object AncManager {
     private const val PREFS_NAME = "realme_anc_prefs"
     private const val KEY_MODE = "active_mode"
     private const val KEY_BATTERY = "cached_battery"
+    private const val KEY_BATTERY_LEFT = "cached_battery_left"
+    private const val KEY_BATTERY_RIGHT = "cached_battery_right"
+    private const val KEY_BATTERY_CASE = "cached_battery_case"
     private const val DEFAULT_MAC = "B0:38:E2:DF:F4:8C"
 
     // QuickBuds RFCOMM UUIDs for OnePlus / OPPO / realme earbuds
@@ -36,6 +39,9 @@ object AncManager {
         val name: String,
         val mac: String,
         val battery: Int,
+        val batteryLeft: Int = -1,
+        val batteryRight: Int = -1,
+        val batteryCase: Int = -1,
         val mode: String,
         val isConnected: Boolean
     )
@@ -55,11 +61,29 @@ object AncManager {
         return prefs.getInt(KEY_BATTERY, -1)
     }
 
-    fun setCachedBattery(context: Context, level: Int) {
-        if (level >= 0) {
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit().putInt(KEY_BATTERY, level).apply()
-        }
+    fun getCachedBatteryLeft(context: Context): Int {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getInt(KEY_BATTERY_LEFT, -1)
+    }
+
+    fun getCachedBatteryRight(context: Context): Int {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getInt(KEY_BATTERY_RIGHT, -1)
+    }
+
+    fun getCachedBatteryCase(context: Context): Int {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getInt(KEY_BATTERY_CASE, -1)
+    }
+
+    fun setCachedBattery(context: Context, level: Int, left: Int = -1, right: Int = -1, case: Int = -1) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val editor = prefs.edit()
+        if (level >= 0) editor.putInt(KEY_BATTERY, level)
+        if (left >= 0) editor.putInt(KEY_BATTERY_LEFT, left)
+        if (right >= 0) editor.putInt(KEY_BATTERY_RIGHT, right)
+        if (case >= 0) editor.putInt(KEY_BATTERY_CASE, case)
+        editor.apply()
     }
 
     @SuppressLint("MissingPermission")
@@ -132,6 +156,9 @@ object AncManager {
             name = name,
             mac = mac,
             battery = battery,
+            batteryLeft = getCachedBatteryLeft(context),
+            batteryRight = getCachedBatteryRight(context),
+            batteryCase = getCachedBatteryCase(context),
             mode = mode,
             isConnected = isConnected
         )
@@ -322,7 +349,7 @@ object AncManager {
                                 else -> -1
                             }
                             if (avgBatt > 0) {
-                                setCachedBattery(context, avgBatt)
+                                setCachedBattery(context, avgBatt, lLevel, rLevel)
                                 Log.i(TAG, "Parsed live RFCOMM battery: $avgBatt% (L=$lLevel, R=$rLevel)")
                             }
                         }
@@ -341,39 +368,30 @@ object AncManager {
     }
 
     private fun readBatteryFromShell(): Int {
-        return try {
-            val out = runRootCommand("dumpsys bluetooth_manager | grep -E 'untethered.*battery|\\+IPHONEACCEV=1,1,[0-9]|mBatteryLevel: [0-9]+'") ?: ""
-            val lMatch = Regex("""untethered_left_battery=(\d+)""").find(out)
-            val rMatch = Regex("""untethered_right_battery=(\d+)""").find(out)
-            val l = lMatch?.groupValues?.get(1)?.toIntOrNull() ?: -1
-            val r = rMatch?.groupValues?.get(1)?.toIntOrNull() ?: -1
-            if (l > 0 && r > 0) return minOf(l, r)
-            if (l > 0) return l
-            if (r > 0) return r
-
-            val iphMatch = Regex("""\+IPHONEACCEV=1,1,(\d+)""").find(out)
-            if (iphMatch != null) {
-                val raw = iphMatch.groupValues[1].toInt()
-                return if (raw >= 9) 100 else (raw + 1) * 10
+        // First check telemetry cache file if it exists (0ms, 0 mutex locks)
+        try {
+            val f = java.io.File("/data/local/tmp/bypass_telemetry/bt_meta.env")
+            if (f.exists() && f.canRead()) {
+                val lines = f.readLines()
+                for (line in lines) {
+                    if (line.startsWith("BT_BATTERY=")) {
+                        val v = line.substringAfter("=").trim().toIntOrNull()
+                        if (v != null && v >= 0) return v
+                    }
+                }
             }
-
-            val mMatch = Regex("""mBatteryLevel:\s*(\d+)""").find(out)
-            if (mMatch != null) {
-                return mMatch.groupValues[1].toInt()
-            }
-            -1
-        } catch (_: Exception) {
-            -1
-        }
+        } catch (_: Exception) {}
+        return -1
     }
 
     private fun isDeviceConnectedShell(mac: String): Boolean {
-        return try {
-            val out = runRootCommand("dumpsys bluetooth_manager | grep -E '$mac.*Connected'") ?: ""
-            out.isNotEmpty()
-        } catch (_: Exception) {
-            false
-        }
+        try {
+            val f = java.io.File("/data/local/tmp/bypass_telemetry/bt_meta.env")
+            if (f.exists() && f.canRead()) {
+                return f.readText().contains(mac, ignoreCase = true)
+            }
+        } catch (_: Exception) {}
+        return false
     }
 
     private fun runRootCommand(cmd: String): String? {

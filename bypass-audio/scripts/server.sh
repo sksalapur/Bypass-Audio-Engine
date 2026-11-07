@@ -123,15 +123,21 @@ case "$URI_PATH" in
         PREFS="/data/data/com.music.bypass/shared_prefs/realme_anc_prefs.xml"
         if [ -f "$PREFS" ]; then
             BATT=$(grep -o 'name="cached_battery" value="[0-9]*"' "$PREFS" 2>/dev/null | cut -d'"' -f4)
+            BATTL=$(grep -o 'name="cached_battery_left" value="[0-9]*"' "$PREFS" 2>/dev/null | cut -d'"' -f4)
+            BATTR=$(grep -o 'name="cached_battery_right" value="[0-9]*"' "$PREFS" 2>/dev/null | cut -d'"' -f4)
+            BATTC=$(grep -o 'name="cached_battery_case" value="[0-9]*"' "$PREFS" 2>/dev/null | cut -d'"' -f4)
             MODE=$(grep -o 'name="active_mode">[^<]*' "$PREFS" 2>/dev/null | cut -d'>' -f2)
             [ -z "$BATT" ] && BATT="-1"
+            [ -z "$BATTL" ] && BATTL="-1"
+            [ -z "$BATTR" ] && BATTR="-1"
+            [ -z "$BATTC" ] && BATTC="-1"
             [ -z "$MODE" ] && MODE="ANC"
-            BODY="{\"battery\":$BATT,\"mode\":\"$MODE\"}"
+            BODY="{\"battery\":$BATT,\"left_battery\":$BATTL,\"right_battery\":$BATTR,\"case_battery\":$BATTC,\"mode\":\"$MODE\"}"
             send_headers "200 OK" "application/json; charset=utf-8" "${#BODY}"
             printf "%s" "$BODY"
         else
-            send_headers "200 OK" "application/json; charset=utf-8" "27"
-            printf '{"battery":-1,"mode":"ANC"}'
+            send_headers "200 OK" "application/json; charset=utf-8" "75"
+            printf '{"battery":-1,"left_battery":-1,"right_battery":-1,"case_battery":-1,"mode":"ANC"}'
         fi
         ;;
 

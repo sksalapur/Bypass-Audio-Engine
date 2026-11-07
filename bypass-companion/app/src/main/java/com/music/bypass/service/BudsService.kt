@@ -381,6 +381,7 @@ class BudsService : Service() {
             val count = payload[startOffset].toInt() and 0xFF
             var lLevel = -1
             var rLevel = -1
+            var cLevel = -1
             for (j in 0 until count) {
                 val idxPos = startOffset + 1 + j * 2
                 if (idxPos + 1 < payload.size) {
@@ -389,6 +390,7 @@ class BudsService : Service() {
                     val lvl = raw and 0x7F
                     if (idx == 1) lLevel = lvl
                     if (idx == 2) rLevel = lvl
+                    if (idx == 3) cLevel = lvl
                 }
             }
             val avgBatt = when {
@@ -398,8 +400,8 @@ class BudsService : Service() {
                 else -> -1
             }
             if (avgBatt > 0) {
-                Log.i(TAG, "Parsed live RFCOMM battery: $avgBatt% (L=$lLevel, R=$rLevel)")
-                AncManager.setCachedBattery(this, avgBatt)
+                Log.i(TAG, "Parsed live RFCOMM battery: $avgBatt% (L=$lLevel, R=$rLevel, Case=$cLevel)")
+                AncManager.setCachedBattery(this, avgBatt, lLevel, rLevel, cLevel)
                 AncWidgetProvider.notifyUpdate(this)
                 updateNotification(AncManager.getActiveMode(this), avgBatt)
             }
